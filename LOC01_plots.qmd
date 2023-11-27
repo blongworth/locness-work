@@ -1,0 +1,166 @@
+---
+title: "Basic_LOC01_plots"
+format: html
+editor: visual
+---
+
+Basic LOC01 plots from Jennie's python notebook, translated to R.
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(patchwork)
+library(maps)
+
+theme_set(theme_classic())
+loc01_data <- "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt"
+```
+
+```{r}
+loc01_df <- read_csv(loc01_data,
+                     na = c("", "NA", "NaN"),
+                     col_types = "cnninnnnnncni",
+                     ) |> 
+  mutate(DateTime_UTC = as.POSIXct(DateTime_UTC, 
+                                   format = "%d-%b-%Y %H:%M:%S", 
+                                   tz = "UTC"),
+         Salinity_PSU = ifelse(Salinity_PSU < 29, NA, Salinity_PSU))
+
+
+dye_df <- loc01_df |> 
+  filter(DateTime_UTC > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
+         DateTime_UTC < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
+```
+
+# Timeseries
+
+```{r}
+dye_plot <- ggplot(dye_df, aes(DateTime_UTC, Dye_ppb)) +
+  geom_line() +
+  scale_y_log10() +
+  labs(x = "Time",
+       y = "Dye (ppb)")
+temp_plot <- ggplot(dye_df, aes(DateTime_UTC, Temp1_C)) +
+  geom_line() +
+  labs(x = "Time",
+       y = "Temp (C)")
+sal_plot <- ggplot(dye_df, aes(DateTime_UTC, Salinity_PSU)) +
+  geom_line() +
+  labs(x = "Time",
+       y = "Salinity (PSU)")
+ta_plot <- ggplot(dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
+  geom_point(shape = 1) +
+  labs(x = "Time",
+       y = expression(paste(TA ~ (μmol ~ kg^-1))))
+
+(dye_plot + temp_plot) / (sal_plot + ta_plot)
+```
+
+# Maps
+
+```{r}
+# Outline map
+map_data = map_data("usa")
+
+head(dye_df)
+
+myscaler <- function(x, from, to) {
+  high=1.2
+  low=0.1
+  ifelse(x<low,0,ifelse(x>high,1,(x-low)/(high-low)))
+}
+
+
+# Plot 
+ggplot() + 
+  geom_map(data = map_data, map = map_data,
+           aes(long, lat, map_id = region),
+           fill = "white", color = "black") +
+  geom_point(data = dye_df, 
+             aes(x = Longitude, y = Latitude, color = log10(Dye_ppb)),
+             size = .4) +
+  scale_color_viridis_c(option = "D",
+                        name = "Dye (log ppb)",
+                        #trans = scales::log10_trans(),
+                        rescaler = myscaler) +
+  xlim(-70.8, -70.6) +
+  ylim(41.01, 41.15) +
+  coord_quickmap() +
+  ggtitle("Dye") +
+  xlab("Longitude") +
+  ylab("Latitude")
+  
+```
+
+```{r}
+ggplot() + 
+  geom_map(data = map_data, map = map_data,
+           aes(long, lat, map_id = region),
+           fill = "white", color = "black") +
+  geom_point(data = dye_df, 
+             aes(x = Longitude, y = Latitude, color = Salinity_PSU),
+             size = .4) +
+  scale_color_viridis_c(option = "D") +
+  xlim(-70.8, -70.6) +
+  ylim(41.01, 41.15) +
+  coord_quickmap() +
+  ggtitle("Salinity") +
+  xlab("Longitude") +
+  ylab("Latitude")
+```
+
+```{r}
+ggplot() + 
+  geom_map(data = map_data, map = map_data,
+           aes(long, lat, map_id = region),
+           fill = "white", color = "black") +
+  geom_point(data = dye_df, 
+             aes(x = Longitude, y = Latitude, color = Temp1_C),
+             size = .4) +
+  scale_color_viridis_c(option = "B",
+                        name = "Temp (C)") +
+  xlim(-70.8, -70.6) +
+  ylim(41.01, 41.15) +
+  coord_quickmap() +
+  ggtitle("Temperature") +
+  xlab("Longitude") +
+  ylab("Latitude")
+```
+
+```{r}
+cruise_TA <- loc01_df |> 
+  filter(!is.na(Corrected_TA_umol_kg_)) |> 
+ggplot() + 
+  geom_map(data = map_data, map = map_data,
+           aes(long, lat, map_id = region),
+           fill = "white", color = "black") +
+  geom_point(aes(x = Longitude, y = Latitude, color = Corrected_TA_umol_kg_),
+             size = 2) +
+  scale_color_viridis_c(option = "D",
+                        name = expression(paste(TA ~ (μmol ~ kg^-1)))) +
+  xlim(-72.1, -70.4) +
+  ylim(40.5, 41.5) +
+  coord_quickmap() +
+  ggtitle("Alkalinity") +
+  xlab("Longitude") +
+  ylab("Latitude")
+
+dye_TA <- dye_df |>  
+  filter(!is.na(Corrected_TA_umol_kg_)) |> 
+  ggplot() +
+  geom_map(data = map_data, map = map_data,
+           aes(long, lat, map_id = region),
+           fill = "white", color = "black") +
+  geom_point(aes(x = Longitude, y = Latitude, color = Corrected_TA_umol_kg_),
+             size = 2, shape = 1) +
+  scale_color_viridis_c(option = "D",
+                        name = expression(paste(TA ~ (μmol ~ kg^-1)))) +
+  xlim(-70.8, -70.6) +
+  ylim(41.01, 41.15) +
+  coord_quickmap() +
+  ggtitle("Alkalinity") +
+  xlab("Longitude") +
+  ylab("Latitude")
+
+cruise_TA + dye_TA
+```
