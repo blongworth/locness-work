@@ -6,18 +6,30 @@ editor: visual
 
 Basic LOC01 plots from Jennie's python notebook, translated to R.
 
+
 ```{r}
 library(tidyverse)
 library(skimr)
 library(patchwork)
 library(maps)
+library(janitor)
+library(lubridate)
 
 theme_set(theme_classic())
-loc01_data <- "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt"
 ```
 
+# Data
+
 ```{r}
-loc01_df <- read_csv(loc01_data,
+loc01_underway <- "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt"
+loc01_drifter <- "data/Drifter_data_combined.csv"
+loc01_ctd <- "data/CTD_downcast_upcast.csv"
+```
+
+### Underway
+
+```{r}
+uw_df <- read_csv(loc01_underway,
                      na = c("", "NA", "NaN"),
                      col_types = "cnninnnnnncni",
                      ) |> 
@@ -27,28 +39,42 @@ loc01_df <- read_csv(loc01_data,
          Salinity_PSU = ifelse(Salinity_PSU < 29, NA, Salinity_PSU))
 
 
-dye_df <- loc01_df |> 
+uw_dye_df <- uw_df |> 
   filter(DateTime_UTC > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
          DateTime_UTC < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 ```
 
-# Timeseries
+### Drifters
 
 ```{r}
-dye_plot <- ggplot(dye_df, aes(DateTime_UTC, Dye_ppb)) +
+drifter_df <- read_csv(loc01_drifter,
+                       na = c("", "NA", "NaN")) |> 
+  clean_names() |> 
+  mutate(date_time_utc = mdy_hm(date_time_utc)) |> 
+  rename(latitude = lattitude) |> 
+  filter(latitude < 41.5)
+```
+
+
+# Timeseries
+
+### Underway
+
+```{r}
+dye_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Dye_ppb)) +
   geom_line() +
   scale_y_log10() +
   labs(x = "Time",
        y = "Dye (ppb)")
-temp_plot <- ggplot(dye_df, aes(DateTime_UTC, Temp1_C)) +
+temp_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Temp1_C)) +
   geom_line() +
   labs(x = "Time",
        y = "Temp (C)")
-sal_plot <- ggplot(dye_df, aes(DateTime_UTC, Salinity_PSU)) +
+sal_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Salinity_PSU)) +
   geom_line() +
   labs(x = "Time",
        y = "Salinity (PSU)")
-ta_plot <- ggplot(dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
+ta_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
   geom_point(shape = 1) +
   labs(x = "Time",
        y = expression(paste(TA ~ (μmol ~ kg^-1))))
@@ -58,11 +84,13 @@ ta_plot <- ggplot(dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
 
 # Maps
 
+### Underway
+
 ```{r}
 # Outline map
 map_data = map_data("usa")
 
-head(dye_df)
+head(uw_dye_df)
 
 myscaler <- function(x, from, to) {
   high=1.2
@@ -76,7 +104,7 @@ ggplot() +
   geom_map(data = map_data, map = map_data,
            aes(long, lat, map_id = region),
            fill = "white", color = "black") +
-  geom_point(data = dye_df, 
+  geom_point(data = uw_dye_df, 
              aes(x = Longitude, y = Latitude, color = log10(Dye_ppb)),
              size = .4) +
   scale_color_viridis_c(option = "D",
@@ -97,7 +125,7 @@ ggplot() +
   geom_map(data = map_data, map = map_data,
            aes(long, lat, map_id = region),
            fill = "white", color = "black") +
-  geom_point(data = dye_df, 
+  geom_point(data = uw_dye_df, 
              aes(x = Longitude, y = Latitude, color = Salinity_PSU),
              size = .4) +
   scale_color_viridis_c(option = "D") +
@@ -114,7 +142,7 @@ ggplot() +
   geom_map(data = map_data, map = map_data,
            aes(long, lat, map_id = region),
            fill = "white", color = "black") +
-  geom_point(data = dye_df, 
+  geom_point(data = uw_dye_df, 
              aes(x = Longitude, y = Latitude, color = Temp1_C),
              size = .4) +
   scale_color_viridis_c(option = "B",
@@ -128,7 +156,7 @@ ggplot() +
 ```
 
 ```{r}
-cruise_TA <- loc01_df |> 
+cruise_TA <- uw_df |> 
   filter(!is.na(Corrected_TA_umol_kg_)) |> 
 ggplot() + 
   geom_map(data = map_data, map = map_data,
@@ -145,7 +173,7 @@ ggplot() +
   xlab("Longitude") +
   ylab("Latitude")
 
-dye_TA <- dye_df |>  
+dye_TA <- uw_dye_df |>  
   filter(!is.na(Corrected_TA_umol_kg_)) |> 
   ggplot() +
   geom_map(data = map_data, map = map_data,
@@ -164,3 +192,14 @@ dye_TA <- dye_df |>
 
 cruise_TA + dye_TA
 ```
+
+### Drifters
+
+```{r}
+drifter_df |> 
+  filter(!is.na(sensor_ppb)) |> 
+  ggplot(aes(longitude, latitude, shape = asset, color = sensor_ppb)) +
+  geom_point() +
+  coord_quickmap()
+```
+
