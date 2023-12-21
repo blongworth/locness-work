@@ -196,10 +196,26 @@ cruise_TA + dye_TA
 ### Drifters
 
 ```{r}
-drifter_df |> 
-  filter(!is.na(sensor_ppb)) |> 
-  ggplot(aes(longitude, latitude, shape = asset, color = sensor_ppb)) +
+  ggplot() +
+  geom_point(data = uw_dye_df, 
+             aes(x = Longitude, y = Latitude, color = log10(Dye_ppb)),
+             size = .4) +
+  geom_point(data = filter(drifter_df, !is.na(sensor_ppb)), aes(longitude, latitude, shape = asset, color = sensor_ppb)) +
+  scale_color_viridis_c(option = "D",
+                        name = "Dye (log ppb)",
+                        #trans = scales::log10_trans(),
+                        rescaler = myscaler) +
   geom_point() +
   coord_quickmap()
+```
+
+```{r}
+drifter_df |> 
+  filter(!is.na(sensor_ppb)) |> 
+  ggplot(aes(date_time_utc, sensor_ppb)) +
+  geom_line(data = uw_dye_df, aes(DateTime_UTC, Dye_ppb), color = "lightblue") +
+  geom_point() +
+  scale_y_log10() +
+  facet_grid(rows = vars(asset))
 ```
 
