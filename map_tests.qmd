@@ -1,0 +1,32 @@
+---
+title: "maps"
+format: html
+editor: visual
+---
+
+Map speed tests
+
+```{r}
+library(leaflet)
+library(mapdeck)
+```
+
+```{r}
+df <- read.csv("data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt")
+```
+
+
+```{r}
+key <- 'pk.eyJ1IjoiYmxvbmd3b3J0aCIsImEiOiJjbHI3NmtzMmYyZTBuMmluOGZ4dmhuaWFqIn0.eW7yUb_wqL7LQJOURH9IRQ'
+mapdeck(token = key, style = mapdeck_style("dark")) |> 
+  add_scatterplot(
+    data = df, 
+    lat = "Latitude", 
+    lon = "Longitude",
+    radius = 10, 
+    fill_colour = "Dye_ppb",
+    layer_id = "dye_layer",
+    palette = "plasma")
+
+```
+
