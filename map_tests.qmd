@@ -7,12 +7,25 @@ editor: visual
 Map speed tests
 
 ```{r}
+library(readr)
+library(dplyr)
 library(leaflet)
 library(mapdeck)
 ```
 
 ```{r}
-df <- read.csv("data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt")
+df <- read_csv(
+  "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt", 
+               na = c("", "NA", "NaN"),
+               col_types = "cnninnnnnncni",
+) |> 
+  mutate(DateTime_UTC = as.POSIXct(DateTime_UTC, 
+                                   format = "%d-%b-%Y %H:%M:%S", 
+                                   tz = "UTC"),
+         Salinity_PSU = ifelse(Salinity_PSU < 29, NA, Salinity_PSU),
+         log_dye = log10(Dye_ppb)) |> 
+  filter(DateTime_UTC > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
+         DateTime_UTC < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 ```
 
 
@@ -24,7 +37,7 @@ mapdeck(token = key, style = mapdeck_style("dark")) |>
     lat = "Latitude", 
     lon = "Longitude",
     radius = 10, 
-    fill_colour = "Dye_ppb",
+    fill_colour = "log_dye",
     layer_id = "dye_layer",
     palette = "plasma")
 
