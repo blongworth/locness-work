@@ -19,7 +19,7 @@ library(xts)
 
 # Data locations
 loc01_underway <- here("data/LOC-01_Underway_continuous.txt")
-loc01_drifter <- here("data/Drifter_data_combined.csv")
+loc01_drifter <- here("data/drifters_interp.csv")
 loc01_ctd <- here("data/CTD_downcast_upcast.csv")
 
 # Load and prepare sample ship track data
@@ -39,34 +39,79 @@ ship_data <- read_csv(loc01_underway,
   filter(datetime > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
          datetime < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 
+# Drifter data
+drifter_df <- read_csv(loc01_drifter)
+
+# CTD Data
+ctd_df <- read_csv(loc01_ctd) |> 
+  clean_names() |> 
+  mutate(timestamp = as.POSIXct(paste(start_date, 
+                                      as.character(start_time_utc)), 
+                                format="%m/%d/%y %H:%M:%S")) |> 
+  filter(upcast_downcast == "Downcast") |> 
+  select(lat = longitude_deg,
+         lon = longitude_deg_2,
+         datetime = timestamp,
+         station, 
+         cast, 
+         in_out, 
+         temp = t090c_its_90_deg_c,
+         sal = sal00_psu,
+         dye = rhodfl_tc0_ppb
+         )
+
+ctd_loc <- ctd_df |> 
+  distinct(station, cast, .keep_all = TRUE)
+
 # resample dataset
 resample_ship <- function(data, interval_seconds) {
   data %>%
     mutate(datetime = floor_date(datetime, 
-                                          unit = paste0(interval_seconds, 
-                                                        " seconds"))) %>%  
+                                 unit = paste0(interval_seconds, 
+                                               " seconds"))) %>%  
     group_by(datetime) %>%
     summarise(across(everything(), mean, .names = "{.col}"))
 }
 
 
-map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
-  pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+map_plot <- function(uw_data, dr_data, ctd_loc, point_var, palette = "magma", n_quantiles = 30) {
+  # Palette for in/out
+  pal_fac <- colorFactor(c("red", "navy"), domain = ctd_loc$in_out)
+  # Palette for continuous
+  pal_cont <- colorQuantile(palette, uw_data[[point_var]], n = n_quantiles)
   # Create Leaflet map
-  leaflet(data = data) |> 
+  leaflet(data = uw_data) |> 
     addTiles() |> 
     addCircleMarkers(
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]]))
+      color = ~pal_cont(uw_data[[point_var]])) |> 
+    addCircleMarkers(
+      data = dr_data,
+     # lng = ~longitude,
+     # lat = ~latitude,
+      color = ~pal_cont(dr_data[[point_var]]),
+      popup = ~asset,
+      radius = 2,
+      stroke = FALSE,
+      fillOpacity = 0.5) |> 
+    addCircleMarkers(
+      data = ctd_loc,
+      color = ~pal_fac(in_out)
+    )
 }
 
-map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
+map_add <- function(mapid, data, point_var, clear = TRUE, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
-  # Create Leaflet map
-  leafletProxy(mapid, data = data) |> 
-    clearMarkers() |> 
+  # get map
+  uwmap <- leafletProxy(mapid, data = data)
+  
+  if (clear) {
+    uwmap <- clearMarkers(uwmap)
+  }
+  
+  uwmap |> 
     addCircleMarkers(
       radius = 2,
       stroke = FALSE,
@@ -116,7 +161,7 @@ server <- function(input, output) {
     })
   
     output$mapplot <- renderLeaflet({
-      map_plot(filtered_ship(), input$var_col)
+      map_plot(filtered_ship(), drifter_df, ctd_loc, input$var_col)
     })
     
     output$tsplot <- renderDygraph({
