@@ -14,6 +14,7 @@ library(patchwork)
 library(janitor)
 library(lubridate)
 library(leaflet)
+library(mapdeck)
 
 theme_set(theme_classic())
 ```
@@ -22,10 +23,7 @@ theme_set(theme_classic())
 
 ```{r}
 loc01_underway <- "data/LOC-01_Underway_continuous.txt"
-loc01_drifter_comp <- "data/Drifter_compiled.csv"
-loc01_drifters <- list.files(path = "data",
-                             pattern = "LOC-01_Drifter",
-                             full.names = TRUE)
+loc01_drifter_comp <- "data/drifters_interp.csv"
 loc01_ctd <- "data/CTD_downcast_upcast.csv"
 ```
 
@@ -79,17 +77,12 @@ ggplot(ctd_df, aes(dep_sm_salt_water_m, rhodfl_tc0_ppb, color = upcast_downcast)
 ### Drifters
 
 ```{r}
-drifter_df <- read_csv(loc01_drifter_comp,
-                       na = c("", "NA", "NaN")) |> 
-  clean_names() |> 
-  mutate(date_time_utc = mdy_hm(date_time_utc)) |> 
-  rename(latitude = lattitude) |> 
-  filter(latitude < 41.5)
+drifter_df <- read_csv(loc01_drifter_comp)
 ```
 
 ```{r}
 drifter_df |> 
-  ggplot(aes(date_time_utc, sensor_ppb, color = sensor_ppb)) +
+  ggplot(aes(datetime, dye, color = dye)) +
   geom_point() +
   scale_y_log10()
 ```
@@ -103,9 +96,9 @@ pal_rho <- colorQuantile("magma", uw_dye_df[["sensor_ppb"]], n = 50)
 
 leaflet(drifter_df) |> 
   addTiles() |> 
-  addCircleMarkers(lng = ~longitude,
-             lat = ~latitude,
-             color = ~pal_rho(sensor_ppb),
+  addCircleMarkers(lng = ~lon,
+             lat = ~lat,
+             color = ~pal_rho(dye),
              popup = ~asset,
              radius = 2,
              stroke = FALSE,
@@ -274,21 +267,51 @@ cruise_TA + dye_TA
   geom_point(data = uw_dye_df, 
              aes(x = Longitude, y = Latitude, color = log10(Dye_ppb)),
              size = .4) +
-  geom_point(data = filter(drifter_df, !is.na(sensor_ppb)), aes(longitude, latitude, shape = asset, color = sensor_ppb)) +
+  geom_point(data = drifter_df, aes(lon, lat, shape = asset, color = log10(dye))) +
   scale_color_viridis_c(option = "D",
                         name = "Dye (log ppb)",
-                        #trans = scales::log10_trans(),
-                        rescaler = myscaler) +
+                        trans = scales::log10_trans()) +
   geom_point() +
   coord_quickmap()
 ```
 
 ```{r}
 drifter_df |> 
-  filter(!is.na(sensor_ppb)) |> 
-  ggplot(aes(date_time_utc, sensor_ppb)) +
+  ggplot(aes(datetime, dye)) +
   geom_line(data = uw_dye_df, aes(DateTime_UTC, Dye_ppb), color = "lightblue") +
-  geom_point() +
+  geom_line() +
   scale_y_log10() +
   facet_grid(rows = vars(asset))
+```
+
+# Mapdeck map
+
+```{r}
+#m <- grDevices::colorRamp(c("blue", "white", "yellow"), bias = 6)(df[["Dye_ppb"]])
+#pal <- col_quantile("viridis", df[["Dye_ppb"]], n = 30)(df[["Dye_ppb"]])
+
+uw <- uw_dye_df |> 
+  mutate(dye = log10(Dye_ppb))
+         
+dr <- drifter_df |> 
+  mutate(dye = log10(dye))
+
+key <- 'pk.eyJ1IjoiYmxvbmd3b3J0aCIsImEiOiJjbHI3NmtzMmYyZTBuMmluOGZ4dmhuaWFqIn0.eW7yUb_wqL7LQJOURH9IRQ'
+mapdeck(token = key, style = mapdeck_style("light")) |> 
+  add_scatterplot(
+    data = uw, 
+    lat = "Latitude", 
+    lon = "Longitude",
+    radius = 10, 
+    fill_colour = "dye",
+    layer_id = "dye_layer",
+    palette = "viridis") |> 
+  add_scatterplot(
+    data = dr, 
+    lat = "lat", 
+    lon = "lon",
+    radius = 10, 
+    fill_colour = "dye",
+    layer_id = "drifter_layer",
+    palette = "viridis")
 ```
