@@ -1,0 +1,64 @@
+---
+title: "drifter spatial interpolation"
+format: html
+editor: source
+---
+
+```{r}
+library(tidyverse)
+library(plotly)
+
+#drifter files
+loc01_drifters <- list.files(path = "data",
+                             pattern = "LOC-01_Drifter",
+                             full.names = TRUE)
+```
+
+Function to process drifters, clean up names, interpolate positions and times.
+
+```{r}
+process_drifter <- function(data) {
+  data |> 
+    clean_names() |>
+    fill(deployment, asset) |> 
+    select(lat = lattitude,
+           lon = longitude,
+           datetime = date_time_utc,
+           asset,
+           deployment,
+           dye = sensor_ppb,
+           temp = t_deg_c,
+           sal = salinity_psu) |> 
+    group_by(deployment) |> 
+    mutate(datetime = mdy_hms(datetime),
+           interpolated = ifelse(is.na(lat), TRUE, FALSE),
+           lat = round(na.spline(lat), 5),
+           lon = round(na.spline(lon), 5),
+           datetime = as.POSIXct(na.spline(datetime), 
+                                 origin = "1970-01-01",
+                                 tz = "UTC"))
+}
+```
+
+Remove bad points
+
+```{r}
+dr03 <- read_csv(loc01_drifters[3],
+                 na = c("", "NA", "NaN")) |> 
+  mutate(Longitude = ifelse(Longitude == -70.71490, NA, Longitude),
+         Lattitude = ifelse(Lattitude == 41.13017, NA, Lattitude),
+         `DateTime UTC` = ifelse(`DateTime UTC` == "9/2/2023 17:35:31", NA, `DateTime UTC`))
+
+dr04 <- read_csv(loc01_drifters[4], 
+                 na = c("", "NA", "NaN")) |> 
+  remove_empty("rows")
+```
+
+```{r}
+drifters <- map_dfr(list(dr03, dr04), process_drifter)
+write_csv(drifters, "data/drifters_interp.csv")
+```
+
+```{r}
+ggplot(drifters, aes(lon, lat, color = log10(dye))) + geom_point()
+```
