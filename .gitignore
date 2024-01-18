@@ -5,3 +5,5 @@
 .DS_Store
 data/
 rsconnect/
+/.quarto/
+/_site/
