@@ -6,14 +6,14 @@ editor: visual
 
 Basic LOC01 plots from Jennie's python notebook, translated to R.
 
-
 ```{r}
 library(tidyverse)
 library(skimr)
 library(patchwork)
-library(maps)
+#library(maps)
 library(janitor)
 library(lubridate)
+library(leaflet)
 
 theme_set(theme_classic())
 ```
@@ -21,8 +21,11 @@ theme_set(theme_classic())
 # Data
 
 ```{r}
-loc01_underway <- "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt"
-loc01_drifter <- "data/Drifter_data_combined.csv"
+loc01_underway <- "data/LOC-01_Underway_continuous.txt"
+loc01_drifter_comp <- "data/Drifter_compiled.csv"
+loc01_drifters <- list.files(path = "data",
+                             pattern = "LOC-01_Drifter",
+                             full.names = TRUE)
 loc01_ctd <- "data/CTD_downcast_upcast.csv"
 ```
 
@@ -44,10 +47,39 @@ uw_dye_df <- uw_df |>
          DateTime_UTC < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 ```
 
+### CTD
+
+```{r}
+ctd_df <- read_csv(loc01_ctd) |> 
+  clean_names()
+```
+
+Need per-cast info: station, cast, in-out, start timestamp, start lat, start lon
+
+```{r}
+ctd_loc <- ctd_df |> 
+  mutate(timestamp = as.POSIXct(paste(start_date, as.character(start_time_utc)), format="%m/%d/%y %H:%M:%S")) |> 
+  select(station, cast, in_out, 
+         timestamp,
+         lat = longitude_deg, lon = longitude_deg_2) |> 
+  distinct(station, cast, .keep_all = TRUE)
+ctd_loc
+```
+
+```{r}
+#|fig-height: 800
+ggplot(ctd_df, aes(dep_sm_salt_water_m, rhodfl_tc0_ppb, color = upcast_downcast)) +
+  geom_line() +
+  coord_flip() +
+  scale_y_log10() +
+  scale_x_reverse() +
+  facet_grid(rows = vars(in_out), cols = vars(station, cast))
+```
+
 ### Drifters
 
 ```{r}
-drifter_df <- read_csv(loc01_drifter,
+drifter_df <- read_csv(loc01_drifter_comp,
                        na = c("", "NA", "NaN")) |> 
   clean_names() |> 
   mutate(date_time_utc = mdy_hm(date_time_utc)) |> 
@@ -55,6 +87,40 @@ drifter_df <- read_csv(loc01_drifter,
   filter(latitude < 41.5)
 ```
 
+```{r}
+drifter_df |> 
+  ggplot(aes(date_time_utc, sensor_ppb, color = sensor_ppb)) +
+  geom_point() +
+  scale_y_log10()
+```
+
+```{r}
+# Create a palette that maps factor levels to colors
+pal_fac <- colorFactor(c("red", "navy"), domain = ctd_loc$in_out)
+
+#pal_rho <- colorQuantile("magma", drifter_df[["Dye_ppb"]], n = 10)
+pal_rho <- colorQuantile("magma", uw_dye_df[["sensor_ppb"]], n = 50)
+
+leaflet(drifter_df) |> 
+  addTiles() |> 
+  addCircleMarkers(lng = ~longitude,
+             lat = ~latitude,
+             color = ~pal_rho(sensor_ppb),
+             popup = ~asset,
+             radius = 2,
+             stroke = FALSE,
+             fillOpacity = 0.5) |> 
+  addCircleMarkers(
+    data = uw_dye_df,
+    radius = 2,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    color = ~pal_rho(uw_dye_df[["Dye_ppb"]])) |> 
+  addCircleMarkers(
+    data = ctd_loc,
+    color = ~pal_fac(in_out)
+  )
+```
 
 # Timeseries
 
@@ -66,6 +132,14 @@ dye_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Dye_ppb)) +
   scale_y_log10() +
   labs(x = "Time",
        y = "Dye (ppb)")
+
+dye_plot_ctd <- ggplot(uw_dye_df, aes(DateTime_UTC, Dye_ppb)) +
+  geom_point() +
+  geom_line() +
+  scale_y_log10() +
+  labs(x = "Time",
+       y = "Dye (ppb)")
+
 temp_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Temp1_C)) +
   geom_line() +
   labs(x = "Time",
@@ -218,4 +292,3 @@ drifter_df |>
   scale_y_log10() +
   facet_grid(rows = vars(asset))
 ```
-
