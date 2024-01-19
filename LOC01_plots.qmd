@@ -1,7 +1,10 @@
 ---
 title: "Basic_LOC01_plots"
 format: html
-editor: visual
+editor: source
+execute:
+  message: false
+  warning: false
 ---
 
 Basic LOC01 plots from Jennie's python notebook, translated to R.
@@ -21,6 +24,8 @@ theme_set(theme_classic())
 
 # Data
 
+Load data. Files from LOC-01 data on Teams drive.
+
 ```{r}
 loc01_underway <- "data/LOC-01_Underway_continuous.txt"
 loc01_drifter_comp <- "data/drifters_interp.csv"
@@ -38,7 +43,6 @@ uw_df <- read_csv(loc01_underway,
                                    format = "%d-%b-%Y %H:%M:%S", 
                                    tz = "UTC"),
          Salinity_PSU = ifelse(Salinity_PSU < 29, NA, Salinity_PSU))
-
 
 uw_dye_df <- uw_df |> 
   filter(DateTime_UTC > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
@@ -61,58 +65,15 @@ ctd_loc <- ctd_df |>
          timestamp,
          lat = longitude_deg, lon = longitude_deg_2) |> 
   distinct(station, cast, .keep_all = TRUE)
-ctd_loc
 ```
 
-```{r}
-#|fig-height: 800
-ggplot(ctd_df, aes(dep_sm_salt_water_m, rhodfl_tc0_ppb, color = upcast_downcast)) +
-  geom_line() +
-  coord_flip() +
-  scale_y_log10() +
-  scale_x_reverse() +
-  facet_grid(rows = vars(in_out), cols = vars(station, cast))
-```
 
 ### Drifters
 
+Data for drifters 3 and 4 processed in separate script. Position and time between SPOT fixes are interpolated (spline). One outlier in drifter 3 and some position data without sonde data in drifter 4 removed.
+
 ```{r}
 drifter_df <- read_csv(loc01_drifter_comp)
-```
-
-```{r}
-drifter_df |> 
-  ggplot(aes(datetime, dye, color = dye)) +
-  geom_point() +
-  scale_y_log10()
-```
-
-```{r}
-# Create a palette that maps factor levels to colors
-pal_fac <- colorFactor(c("red", "navy"), domain = ctd_loc$in_out)
-
-#pal_rho <- colorQuantile("magma", drifter_df[["Dye_ppb"]], n = 10)
-pal_rho <- colorQuantile("magma", uw_dye_df[["sensor_ppb"]], n = 50)
-
-leaflet(drifter_df) |> 
-  addTiles() |> 
-  addCircleMarkers(lng = ~lon,
-             lat = ~lat,
-             color = ~pal_rho(dye),
-             popup = ~asset,
-             radius = 2,
-             stroke = FALSE,
-             fillOpacity = 0.5) |> 
-  addCircleMarkers(
-    data = uw_dye_df,
-    radius = 2,
-    stroke = FALSE,
-    fillOpacity = 0.5,
-    color = ~pal_rho(uw_dye_df[["Dye_ppb"]])) |> 
-  addCircleMarkers(
-    data = ctd_loc,
-    color = ~pal_fac(in_out)
-  )
 ```
 
 # Timeseries
@@ -149,6 +110,35 @@ ta_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
 (dye_plot + temp_plot) / (sal_plot + ta_plot)
 ```
 
+# CTD Plots
+
+```{r}
+#|fig-height: 800
+ggplot(ctd_df, aes(dep_sm_salt_water_m, rhodfl_tc0_ppb, color = upcast_downcast)) +
+  geom_line() +
+  coord_flip() +
+  scale_y_log10() +
+  scale_x_reverse() +
+  facet_grid(rows = vars(in_out), cols = vars(station, cast))
+```
+
+# Drifters
+
+```{r}
+drifter_df |> 
+  ggplot(aes(datetime, dye, color = asset)) +
+  geom_point() +
+  scale_y_log10()
+```
+
+```{r}
+drifter_df |> 
+  ggplot(aes(datetime, dye)) +
+  geom_line(data = uw_dye_df, aes(DateTime_UTC, Dye_ppb), color = "lightblue") +
+  geom_line() +
+  scale_y_log10() +
+  facet_grid(rows = vars(asset))
+```
 # Maps
 
 ### Underway
@@ -157,14 +147,11 @@ ta_plot <- ggplot(uw_dye_df, aes(DateTime_UTC, Corrected_TA_umol_kg_)) +
 # Outline map
 map_data = map_data("usa")
 
-head(uw_dye_df)
-
 myscaler <- function(x, from, to) {
   high=1.2
   low=0.1
   ifelse(x<low,0,ifelse(x>high,1,(x-low)/(high-low)))
 }
-
 
 # Plot 
 ggplot() + 
@@ -184,7 +171,6 @@ ggplot() +
   ggtitle("Dye") +
   xlab("Longitude") +
   ylab("Latitude")
-  
 ```
 
 ```{r}
@@ -263,7 +249,30 @@ cruise_TA + dye_TA
 ### Drifters
 
 ```{r}
-  ggplot() +
+ggplot() +
+  geom_point(data = drifter_df, aes(lon, lat, shape = asset, color = log10(dye))) +
+  scale_color_viridis_c(option = "D",
+                        name = "Dye (log ppb)",
+                        trans = scales::log10_trans()) +
+  #geom_line() +
+  geom_point(size = 0.5) +
+  coord_quickmap() +
+  ggtitle("Drifter Dye") +
+  xlab("Longitude") +
+  ylab("Latitude")
+```
+
+
+# Combined maps
+
+Combined drifter, underway, and ctd (position only) data. 
+
+## ggplot
+
+Non-interactive
+
+```{r}
+ggplot() +
   geom_point(data = uw_dye_df, 
              aes(x = Longitude, y = Latitude, color = log10(Dye_ppb)),
              size = .4) +
@@ -275,16 +284,41 @@ cruise_TA + dye_TA
   coord_quickmap()
 ```
 
+## Leaflet
+
+Leaflet is slightly easier to work with, but much slower.
+
 ```{r}
-drifter_df |> 
-  ggplot(aes(datetime, dye)) +
-  geom_line(data = uw_dye_df, aes(DateTime_UTC, Dye_ppb), color = "lightblue") +
-  geom_line() +
-  scale_y_log10() +
-  facet_grid(rows = vars(asset))
+# Create a palette that maps factor levels to colors
+pal_fac <- colorFactor(c("red", "navy"), domain = ctd_loc$in_out)
+
+#pal_rho <- colorQuantile("magma", drifter_df[["Dye_ppb"]], n = 10)
+pal_rho <- colorQuantile("magma", uw_dye_df[["sensor_ppb"]], n = 50)
+
+leaflet(drifter_df) |> 
+  addTiles() |> 
+  addCircleMarkers(lng = ~lon,
+             lat = ~lat,
+             color = ~pal_rho(dye),
+             popup = ~asset,
+             radius = 2,
+             stroke = FALSE,
+             fillOpacity = 0.5) |> 
+  addCircleMarkers(
+    data = uw_dye_df,
+    radius = 2,
+    stroke = FALSE,
+    fillOpacity = 0.5,
+    color = ~pal_rho(uw_dye_df[["Dye_ppb"]])) |> 
+  addCircleMarkers(
+    data = ctd_loc,
+    color = ~pal_fac(in_out)
+  )
 ```
 
-# Mapdeck map
+## Mapdeck map
+
+Mapdeck uses WebGL for rendering, so is much faster with 70k points of underway data. Still figuring out color scales for long-tailed fluormeter data.
 
 ```{r}
 #m <- grDevices::colorRamp(c("blue", "white", "yellow"), bias = 6)(df[["Dye_ppb"]])
@@ -315,3 +349,4 @@ mapdeck(token = key, style = mapdeck_style("light")) |>
     layer_id = "drifter_layer",
     palette = "viridis")
 ```
+
