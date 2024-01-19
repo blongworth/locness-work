@@ -74,30 +74,13 @@ resample_ship <- function(data, interval_seconds) {
 }
 
 
-map_plot <- function(uw_data, dr_data, ctd_loc, point_var, palette = "magma", n_quantiles = 30) {
+map_plot <- function(ctd_loc) {
   # Palette for in/out
   pal_fac <- colorFactor(c("red", "navy"), domain = ctd_loc$in_out)
-  # Palette for continuous
-  pal_cont <- colorQuantile(palette, uw_data[[point_var]], n = n_quantiles)
   # Create Leaflet map
-  leaflet(data = uw_data) |> 
+  leaflet(data = ctd_loc) |> 
     addTiles() |> 
     addCircleMarkers(
-      radius = 2,
-      stroke = FALSE,
-      fillOpacity = 0.8,
-      color = ~pal_cont(uw_data[[point_var]])) |> 
-    addCircleMarkers(
-      data = dr_data,
-     # lng = ~longitude,
-     # lat = ~latitude,
-      color = ~pal_cont(dr_data[[point_var]]),
-      popup = ~asset,
-      radius = 2,
-      stroke = FALSE,
-      fillOpacity = 0.5) |> 
-    addCircleMarkers(
-      data = ctd_loc,
       color = ~pal_fac(in_out)
     )
 }
@@ -161,7 +144,9 @@ server <- function(input, output) {
     })
   
     output$mapplot <- renderLeaflet({
-      map_plot(filtered_ship(), drifter_df, ctd_loc, input$var_col)
+      map_plot(ctd_loc)
+      map_add("mapplot", filtered_ship(), input$var_col)
+      map_add("mapplot", drifter_df, input$var_col)
     })
     
     output$tsplot <- renderDygraph({
@@ -199,6 +184,7 @@ server <- function(input, output) {
                  datetime <= date_range[2])
       
       map_add("mapplot", filtered_data, input$var_col)
+      map_add("mapplot", drifter_df, input$var_col)
     })
 }
 
