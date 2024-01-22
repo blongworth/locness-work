@@ -1,0 +1,71 @@
+---
+title: "Drifter-Ship Distances"
+format: html
+editor: source
+---
+
+Calculate distance from ship to drifters for each drifter timestep.
+
+TODO: convert points to sf, calculate distance matrix (drifter-drifter dist).
+
+```{r}
+library(tidyverse)
+library(geosphere)
+```
+
+
+```{r}
+drifter_df <- read_csv("data/Drifter_compiled.csv") |> 
+  janitor::clean_names() |> 
+  mutate(ts = mdy_hm(date_time_utc),
+         drifter_no = as.factor(drifter_no),
+         deployment = as.factor(deployment)) |> 
+  select(ts,
+         lon = longitude,
+         lat = lattitude,
+         drifter_no,
+         deployment)
+
+ship_df <- read_csv("data/LOC-01_Underway_continuous.txt") |> 
+  janitor::clean_names() |> 
+  mutate(ts = dmy_hms(date_time_utc)) |> 
+  filter(second(ts) == 0) |> 
+  select(ts,
+         lon_ship = longitude,
+         lat_ship = latitude)
+```
+
+Join ship and drifter data on timestamp. Calculate Haversine distance between
+ship and drifters.
+
+```{r}
+drsh <- drifter_df |> 
+  left_join(ship_df) |> 
+  rowwise() |> 
+  mutate(dist = sqrt((lon_ship - lon)^2 + (lat_ship - lat)^2),
+         disth = distHaversine(c(lon, lat), c(lon_ship, lat_ship))) |> 
+  filter(disth < 5000)
+```
+
+Distance plot by drifter
+
+```{r}
+drsh |>
+  ggplot(aes(ts, disth, color = drifter_no)) +
+         geom_point()
+```
+
+Histogram of distances
+
+```{r}
+ggplot(drsh, aes(disth)) +
+  geom_histogram() +
+  facet_wrap(vars(drifter_no))
+```
+
+Average and quartiles of distances.
+
+```{r}
+summary(drsh$disth)
+```
+
