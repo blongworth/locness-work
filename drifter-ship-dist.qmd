@@ -11,6 +11,8 @@ TODO: convert points to sf, calculate distance matrix (drifter-drifter dist).
 ```{r}
 library(tidyverse)
 library(geosphere)
+library(sf)
+library(mapview)
 ```
 
 
@@ -67,5 +69,17 @@ Average and quartiles of distances.
 
 ```{r}
 summary(drsh$disth)
+```
+
+Inter-drifter distance using sf
+
+```{r}
+dr_sf <- drifter_df |> 
+  st_as_sf(coords = c("lon", "lat"))
+```
+
+```{r}
+mapviewOptions(platform = "mapdeck")
+mapview(dr_sf)
 ```
 
