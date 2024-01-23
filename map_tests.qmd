@@ -11,11 +11,14 @@ library(readr)
 library(dplyr)
 library(leaflet)
 library(mapdeck)
+library(janitor)
+library(here)
+library(scales)
 ```
 
 ```{r}
 df <- read_csv(
-  "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt", 
+  here("data/LOC-01_Underway_continuous.txt"), 
                na = c("", "NA", "NaN"),
                col_types = "cnninnnnnncni",
 ) |> 
@@ -23,23 +26,54 @@ df <- read_csv(
                                    format = "%d-%b-%Y %H:%M:%S", 
                                    tz = "UTC"),
          Salinity_PSU = ifelse(Salinity_PSU < 29, NA, Salinity_PSU),
-         log_dye = log10(Dye_ppb)) |> 
+         log_dye = log10(Dye_ppb),
+         root_dye = Dye_ppb ^ 1/3) |> 
   filter(DateTime_UTC > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
          DateTime_UTC < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
+
+ctd_df <- read_csv(here("data/CTD_downcast_upcast.csv")) |> 
+  clean_names()
+ctd_loc <- ctd_df |> 
+  mutate(timestamp = as.POSIXct(paste(start_date, as.character(start_time_utc)), format="%m/%d/%y %H:%M:%S")) |> 
+  select(station, cast, in_out, 
+         timestamp,
+         lat = longitude_deg, lon = longitude_deg_2) |> 
+  distinct(station, cast, .keep_all = TRUE)
+
+drifter_df <- read_csv(here("data/drifters_interp.csv"))
+```
+
+Color tests
+
+quartile scale data
+
+```{r}
+out <- quantile(df$Dye_ppb, probs = seq(0, 1, .02), na.rm = TRUE)
+drifter_df$dye_q <- cut(drifter_df$dye, breaks = c(-Inf, out, Inf))
+df$dye_q <- cut(df$Dye_ppb, breaks = c(-Inf, out, Inf))
 ```
 
 
 ```{r}
 key <- 'pk.eyJ1IjoiYmxvbmd3b3J0aCIsImEiOiJjbHI3NmtzMmYyZTBuMmluOGZ4dmhuaWFqIn0.eW7yUb_wqL7LQJOURH9IRQ'
-mapdeck(token = key, style = mapdeck_style("dark")) |> 
+mapdeck(token = key, style = mapdeck_style("light")) |> 
   add_scatterplot(
     data = df, 
     lat = "Latitude", 
     lon = "Longitude",
     radius = 10, 
-    fill_colour = "log_dye",
+    fill_colour = "dye_q",
+    stroke_colour = "dye_q",
     layer_id = "dye_layer",
-    palette = "plasma")
-
+    palette = "viridis") |> 
+  add_scatterplot(
+    data = drifter_df, 
+    lat = "lat", 
+    lon = "lon",
+    radius = 10, 
+    fill_colour = "dye_q",
+    stroke_colour = "dye_q",
+    layer_id = "drifter_layer",
+    palette = "viridis")
 ```
 
